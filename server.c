@@ -66,6 +66,8 @@ void handle_client_request(int client_fd) {
         return;
     }
 
+    printf("Received request: %s\n", buffer); // Debug print
+
     char method[8], path[256], protocol[16];
     sscanf(buffer, "%s %s %s", method, path, protocol);
 
@@ -85,10 +87,43 @@ void handle_client_request(int client_fd) {
             close(file_fd);
         }
     } else if (strcmp(method, "POST") == 0) {
-        // Handle POST requests (very basic implementation)
-        char *response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-        send(client_fd, response, strlen(response), 0);
-    } else if (strcmp(method, "PUT") == 0) {
+    // Locate the end of headers
+    char *header_end = strstr(buffer, "\r\n\r\n");
+    if (header_end == NULL) {
+        // Malformed request
+        return;
+    }
+    header_end += 4; // Move past the "\r\n\r\n"
+
+    // Calculate the length of headers
+    int headers_length = header_end - buffer;
+    int body_length = bytes_read - headers_length; // Initial body length
+
+    // Find Content-Length header
+    int contentLength = 0;
+    char *contentLengthStr = strstr(buffer, "Content-Length: ");
+    if (contentLengthStr) {
+        sscanf(contentLengthStr, "Content-Length: %d", &contentLength);
+    }
+
+    // Read more data if the entire body has not been received yet
+    if (body_length < contentLength) {
+        int additionalBytesRead = recv(client_fd, header_end + body_length, contentLength - body_length, 0);
+        if (additionalBytesRead < 0) {
+            perror("Failed to read the complete body");
+            return;
+        }
+    }
+
+    // Process POST body
+    char *body = header_end;
+    body[contentLength] = '\0'; // Null-terminate the body
+    printf("POST Data: %s\n", body);
+
+    // Send response back to client
+    char *response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    send(client_fd, response, strlen(response), 0);
+} else if (strcmp(method, "PUT") == 0) {
         // Handle PUT requests (very basic implementation)
         char *response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
         send(client_fd, response, strlen(response), 0);
