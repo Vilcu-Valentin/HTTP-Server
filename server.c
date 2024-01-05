@@ -59,33 +59,41 @@ int main() {
 
 void handle_client_request(int client_fd) {
     char buffer[BUFFER_SIZE];
-    int bytes_read = recv(client_fd, buffer, BUFFER_SIZE, 0);
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_read = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
     if (bytes_read < 0) {
         perror("Error reading request");
         return;
     }
 
-    // Parse HTTP method and path
-    char method[8], path[256];
-    sscanf(buffer, "%s %s", method, path);  
+    char method[8], path[256], protocol[16];
+    sscanf(buffer, "%s %s %s", method, path, protocol);
 
-    // Only handling GET requests for simplicity
-    if (strcmp(method, "GET") == 0) {
-        // Open and send the requested file
-        int file_fd = open(path + 1, O_RDONLY); // +1 to skip the leading '/'
+    if (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0) {
+        // Handle GET and HEAD (HEAD is identical to GET but without response body)
+        int file_fd = open(path + 1, O_RDONLY);
         if (file_fd < 0) {
-            // File not found, send 404 Not Found response
             char *response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
             send(client_fd, response, strlen(response), 0);
         } else {
-            // File found, send 200 OK response followed by file content
             char *header = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
             send(client_fd, header, strlen(header), 0);
-            sendfile(client_fd, file_fd, NULL, BUFFER_SIZE);
+            if (strcmp(method, "GET") == 0) {
+                // Send file content for GET requests only
+                sendfile(client_fd, file_fd, NULL, BUFFER_SIZE);
+            }
             close(file_fd);
         }
+    } else if (strcmp(method, "POST") == 0) {
+        // Handle POST requests (very basic implementation)
+        char *response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
+    } else if (strcmp(method, "PUT") == 0) {
+        // Handle PUT requests (very basic implementation)
+        char *response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        send(client_fd, response, strlen(response), 0);
     } else {
-        // Method not implemented, send 501 Not Implemented response
+        // Method not implemented
         char *response = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\n\r\n";
         send(client_fd, response, strlen(response), 0);
     }
