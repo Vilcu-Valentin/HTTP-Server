@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 #include <pthread.h>
+#include <sys/wait.h>
 
 #define BUFFER_SIZE 4096
 
@@ -90,7 +91,48 @@ void *handle_client_request(void *client_fd_ptr)
     char method[8], path[256], protocol[16];
     sscanf(buffer, "%s %s %s", method, path, protocol);
 
-    if (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0)
+    if (strcmp(method, "GET") == 0 && strstr(path, ".php") != NULL)
+    {
+        int pipefd[2];
+        if (pipe(pipefd) == -1)
+        {
+            perror("pipe");
+            return;
+        }
+
+        pid_t pid = fork();
+        if (pid == -1)
+        {
+            perror("fork");
+            return;
+        }
+        else if (pid == 0)
+        {
+            // Child process
+            close(pipefd[0]);                     // Close unused read end
+            dup2(pipefd[1], STDOUT_FILENO);       // Redirect stdout to pipe
+            execlp("php", "php", path + 1, NULL); // Execute PHP script
+            exit(EXIT_FAILURE);
+        }
+        else
+        {
+            // Parent process
+            close(pipefd[1]);      // Close unused write end
+            waitpid(pid, NULL, 0); // Wait for child process to finish
+
+            // Read output from PHP script
+            char script_output[BUFFER_SIZE];
+            read(pipefd[0], script_output, BUFFER_SIZE);
+            close(pipefd[0]);
+
+            // Send output as HTTP response
+            char response_header[BUFFER_SIZE];
+            snprintf(response_header, BUFFER_SIZE, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
+            send(client_fd, response_header, strlen(response_header), 0);
+            send(client_fd, script_output, strlen(script_output), 0);
+        }
+    }
+    else if (strcmp(method, "GET") == 0 || strcmp(method, "HEAD") == 0)
     {
         // Handle GET and HEAD (HEAD is identical to GET but without response body)
         int file_fd = open(path + 1, O_RDONLY);
