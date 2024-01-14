@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #define BUFFER_SIZE 4096
 
@@ -34,6 +35,16 @@ int main()
     addr.sin_family = AF_INET;
     addr.sin_port = htons(8080);
     addr.sin_addr.s_addr = INADDR_ANY;
+
+    struct timeval timeout;
+    timeout.tv_sec = 10; // Timeout in seconds
+    timeout.tv_usec = 0; // Additional microseconds (usually set to 0)
+
+    // Set the timeout for receiving:
+    setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout);
+
+    // Set the timeout for sending:
+    setsockopt(server_fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof timeout);
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
@@ -202,7 +213,7 @@ void handle_post_request(int client_fd, char *body, int body_length)
 
 void handle_put_request(int client_fd, char *body, int body_length, const char *path)
 {
-     char file_path[256];
+    char file_path[256];
     snprintf(file_path, sizeof(file_path), "messages/%s", path); // Prepend 'messages/' to the path
 
     if (access(file_path, F_OK) == -1)
