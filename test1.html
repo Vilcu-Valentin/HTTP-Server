@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHP Date and Time</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .message {
+            background-color: #f0f0f0;
+            padding: 20px;
+            border: 1px solid #ccc;
+            margin: 50px auto;
+            width: 80%;
+            max-width: 400px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="message">
+        <h2>Click the button to get the current date and time:</h2>
+        <button onclick="getDateTime()">Get Date and Time</button>
+        <p id="datetime"></p>
+        <script>
+            function getDateTime() {
+                var xhr = new XMLHttpRequest();
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        document.getElementById("datetime").textContent = xhr.responseText;
+                    }
+                };
+                xhr.open("GET", "get_currentTime.php", true);
+                xhr.send();
+            }
+        </script>
+    </div>
+</body>
+</html>
