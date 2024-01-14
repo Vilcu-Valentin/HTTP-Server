@@ -10,8 +10,28 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <errno.h>
 
 #define BUFFER_SIZE 4096
+#define MAX_THREADS 100
+
+// Global counter for active threads
+int active_threads = 0;
+pthread_mutex_t active_threads_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void increment_thread_count()
+{
+    pthread_mutex_lock(&active_threads_mutex);
+    active_threads++;
+    pthread_mutex_unlock(&active_threads_mutex);
+}
+
+void decrement_thread_count()
+{
+    pthread_mutex_lock(&active_threads_mutex);
+    active_threads--;
+    pthread_mutex_unlock(&active_threads_mutex);
+}
 
 const char *get_mime_type(const char *path);
 void serve_static_file(int client_fd, const char *path);
@@ -37,8 +57,8 @@ int main()
     addr.sin_addr.s_addr = INADDR_ANY;
 
     struct timeval timeout;
-    timeout.tv_sec = 10; // Timeout in seconds
-    timeout.tv_usec = 0; // Additional microseconds (usually set to 0)
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
 
     // Set the timeout for receiving:
     setsockopt(server_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout);
@@ -67,9 +87,22 @@ int main()
         client_fd = accept(server_fd, (struct sockaddr *)&addr, (socklen_t *)&addr_len);
         if (client_fd < 0)
         {
-            perror("Accept failed");
+            if (!(errno == EAGAIN || errno == EWOULDBLOCK))
+            {
+                perror("Accept failed");
+                continue;
+            }
+        }
+
+        pthread_mutex_lock(&active_threads_mutex);
+        if (active_threads >= MAX_THREADS)
+        {
+            pthread_mutex_unlock(&active_threads_mutex);
+            // Optionally implement a queueing mechanism here
+            close(client_fd); // Refuse the connection
             continue;
         }
+        pthread_mutex_unlock(&active_threads_mutex);
 
         pthread_t thread_id;
         int *client_fd_ptr = malloc(sizeof(int));
@@ -305,8 +338,17 @@ void handle_post_put_request(int client_fd, const char *method, char *buffer, in
 
 void *handle_client_request(void *client_fd_ptr)
 {
+    increment_thread_count();
+
     int client_fd = *((int *)client_fd_ptr);
     free(client_fd_ptr);
+
+     if (client_fd < 0)
+    {
+        perror("Invalid file descriptor");
+        decrement_thread_count();
+        return NULL;
+    }
 
     char buffer[BUFFER_SIZE];
     memset(buffer, 0, BUFFER_SIZE);
@@ -314,6 +356,8 @@ void *handle_client_request(void *client_fd_ptr)
     if (bytes_read < 0)
     {
         perror("Error reading request");
+        close(client_fd);
+        decrement_thread_count();
         return NULL;
     }
 
@@ -345,5 +389,6 @@ void *handle_client_request(void *client_fd_ptr)
     }
 
     close(client_fd);
+    decrement_thread_count();
     return NULL;
 }
