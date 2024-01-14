@@ -15,7 +15,7 @@
 const char *get_mime_type(const char *path);
 void serve_static_file(int client_fd, const char *path);
 void execute_php_script(int client_fd, const char *path);
-void handle_post_put_request(int client_fd, const char *method, char *buffer, int buffer_length);
+void handle_post_put_request(int client_fd, const char *method, char *buffer, int buffer_length, const char *path);
 void *handle_client_request(void *client_fd_ptr);
 
 int main()
@@ -86,9 +86,6 @@ int main()
 
 const char *get_mime_type(const char *path)
 {
-    // This function returns the MIME type for given file path
-    // Implement logic to determine MIME type based on file extension
-    // For simplicity, here we only handle HTML and default to text/plain
     const char *ext = strrchr(path, '.');
     if (ext != NULL)
     {
@@ -96,8 +93,16 @@ const char *get_mime_type(const char *path)
         {
             return "text/html";
         }
+        else if (strcmp(ext, ".css") == 0)
+        {
+            return "text/css";
+        }
+        else if (strcmp(ext, ".js") == 0)
+        {
+            return "application/javascript";
+        }
     }
-    return "text/plain";
+    return "text/plain"; // Default MIME type
 }
 
 void serve_static_file(int client_fd, const char *path)
@@ -171,32 +176,59 @@ void execute_php_script(int client_fd, const char *path)
     }
 }
 
-void handle_post_request(int client_fd, char *body) {
-    FILE *file = fopen("post_data.txt", "a");  // Open in append mode
-    if (file == NULL) {
+void handle_post_request(int client_fd, char *body, int body_length)
+{
+    char file_name[256];
+    snprintf(file_name, sizeof(file_name), "messages/message_%ld.txt", time(NULL)); // Store in messages folder
+
+    // Ensure the messages directory exists
+    mkdir("messages", 0777);
+
+    FILE *file = fopen(file_name, "w");
+    if (file == NULL)
+    {
         perror("Failed to open file");
+        const char *errorResponse = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+        send(client_fd, errorResponse, strlen(errorResponse), 0);
         return;
     }
 
-    fprintf(file, "%s\n", body);  // Append the POST data to the file
+    fwrite(body, 1, body_length, file);
     fclose(file);
 
-    printf("POST Request Body: %s\n", body);
+    const char *response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+    send(client_fd, response, strlen(response), 0);
 }
-void handle_put_request(int client_fd, char *body) {
-    FILE *file = fopen("put_data.txt", "w");  // Open in write mode (overwrite)
-    if (file == NULL) {
-        perror("Failed to open file");
+
+void handle_put_request(int client_fd, char *body, int body_length, const char *path)
+{
+     char file_path[256];
+    snprintf(file_path, sizeof(file_path), "messages/%s", path); // Prepend 'messages/' to the path
+
+    if (access(file_path, F_OK) == -1)
+    {
+        const char *notFoundResponse = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+        send(client_fd, notFoundResponse, strlen(notFoundResponse), 0);
         return;
     }
 
-    fprintf(file, "%s", body);  // Write the PUT data to the file
+    FILE *file = fopen(file_path, "w");
+    if (file == NULL)
+    {
+        perror("Failed to open file");
+        const char *errorResponse = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+        send(client_fd, errorResponse, strlen(errorResponse), 0);
+        return;
+    }
+
+    fwrite(body, 1, body_length, file);
     fclose(file);
 
-    printf("PUT Request Body: %s\n", body);
+    const char *response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    send(client_fd, response, strlen(response), 0);
 }
 
-void handle_post_put_request(int client_fd, const char *method, char *buffer, int buffer_length)
+void handle_post_put_request(int client_fd, const char *method, char *buffer, int buffer_length, const char *path)
 {
     char *header_end = strstr(buffer, "\r\n\r\n");
     if (header_end == NULL)
@@ -212,6 +244,14 @@ void handle_post_put_request(int client_fd, const char *method, char *buffer, in
     if (contentLengthStr)
     {
         sscanf(contentLengthStr, "Content-Length: %d", &contentLength);
+    }
+
+    // Check for zero or excessively large content length
+    if (contentLength <= 0 || contentLength > 1048576)
+    { // 1 MB
+        const char *sizeErrorResponse = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\n\r\n";
+        send(client_fd, sizeErrorResponse, strlen(sizeErrorResponse), 0);
+        return;
     }
 
     // Calculate the initial part of the body already read
@@ -238,16 +278,18 @@ void handle_post_put_request(int client_fd, const char *method, char *buffer, in
         totalBytesRead += bytesRead;
     }
 
-    if (strcmp(method, "POST") == 0) {
-        handle_post_request(client_fd, body);
-    } else if (strcmp(method, "PUT") == 0) {
-        handle_put_request(client_fd, body);
+    body[totalBytesRead] = '\0'; // Null-terminate the body
+
+    if (strcmp(method, "POST") == 0)
+    {
+        handle_post_request(client_fd, body, totalBytesRead);
+    }
+    else if (strcmp(method, "PUT") == 0)
+    {
+        handle_put_request(client_fd, body, totalBytesRead, path);
     }
 
     free(body);
-
-    const char *okResponse = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-    send(client_fd, okResponse, strlen(okResponse), 0);
 }
 
 void *handle_client_request(void *client_fd_ptr)
@@ -261,7 +303,7 @@ void *handle_client_request(void *client_fd_ptr)
     if (bytes_read < 0)
     {
         perror("Error reading request");
-        return;
+        return NULL;
     }
 
     printf("Received request: %s\n", buffer); // Debug print
@@ -282,7 +324,7 @@ void *handle_client_request(void *client_fd_ptr)
     }
     else if (strcmp(method, "POST") == 0 || strcmp(method, "PUT") == 0)
     {
-        handle_post_put_request(client_fd, method, buffer, bytes_read);
+        handle_post_put_request(client_fd, method, buffer, bytes_read, path);
     }
     else
     {

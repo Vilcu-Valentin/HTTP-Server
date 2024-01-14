@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Message Board</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            width: 80%;
+            margin: auto;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+        }
+
+        css .form-group input,
+        .form-group textarea,
+        .form-group button {
+            width: 100%;
+            padding: 10px;
+        }
+
+        .feedback {
+            margin-top: 10px;
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="container">
+        <h1>Message Board</h1>
+
+        <!-- Form for submitting a new message -->
+        <div id="postFeedback" class="feedback"></div>
+        <form id="postForm">
+            <div class="form-group">
+                <label for="postMessage">New Message:</label>
+                <textarea id="postMessage" rows="4"></textarea>
+            </div>
+            <div class="form-group">
+                <button type="button" onclick="submitMessage()">Submit Message</button>
+            </div>
+        </form>
+
+        <!-- Form for updating an existing message -->
+        <div id="putFeedback" class="feedback"></div>
+        <form id="putForm">
+            <div class="form-group">
+                <label for="messageId">Message ID (filename):</label>
+                <input type="text" id="messageId">
+            </div>
+            <div class="form-group">
+                <label for="putMessage">Update Message:</label>
+                <textarea id="putMessage" rows="4"></textarea>
+            </div>
+            <div class="form-group">
+                <button type="button" onclick="updateMessage()">Update Message</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function submitMessage() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "http://localhost:8080/createMessage", true);
+            xhr.setRequestHeader('Content-type', 'text/plain');
+            xhr.onload = function () {
+                var feedback = document.getElementById('postFeedback');
+                if (xhr.status === 200) {
+                    feedback.innerText = 'Message submitted successfully!';
+                    feedback.className = 'feedback';
+                } else {
+                    feedback.innerText = 'Error submitting message: ' + xhr.statusText;
+                    feedback.className = 'feedback error';
+                }
+            };
+            xhr.onerror = function () {
+                var feedback = document.getElementById('postFeedback');
+                feedback.innerText = 'Error submitting message!';
+                feedback.className = 'feedback error';
+            };
+            xhr.send(document.getElementById('postMessage').value);
+        }
+    
+        function updateMessage() {
+            var xhr = new XMLHttpRequest();
+            var messageId = document.getElementById('messageId').value;
+            xhr.open("PUT", "http://localhost:8080/" + messageId, true);
+            xhr.setRequestHeader('Content-type', 'text/plain');
+            xhr.onload = function () {
+                var feedback = document.getElementById('putFeedback');
+                if (xhr.status === 200) {
+                    feedback.innerText = 'Message updated successfully!';
+                    feedback.className = 'feedback';
+                } else {
+                    feedback.innerText = 'Error updating message: ' + xhr.statusText;
+                    feedback.className = 'feedback error';
+                }
+            };
+            xhr.onerror = function () {
+                var feedback = document.getElementById('putFeedback');
+                feedback.innerText = 'Error updating message!';
+                feedback.className = 'feedback error';
+            };
+            xhr.send(document.getElementById('putMessage').value);
+        }
+    </script>
+    
+</body>
+
+</html>

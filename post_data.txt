@@ -1,2 +1,0 @@
-sample POST dataget_datetime=
-get_datetime=
